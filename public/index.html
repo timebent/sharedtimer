@@ -1,0 +1,36 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Shared Timer</title>
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <title>Shared Timer</title>
+    <link rel="stylesheet" href="/style.css">
+  </head>
+  <body>
+    <div class="container">
+      <h1 id="clock">00:00</h1>
+
+      <div class="controls">
+        <button id="start">Start</button>
+        <button id="pause">Pause</button>
+        <button id="rewind">Rewind</button>
+        <input id="rewindSeconds" type="number" min="0" placeholder="seconds" />
+      </div>
+
+      <div id="info">Paused</div>
+
+      <div class="cues">
+        <button id="cue1" class="cue">CUE 0</button>
+      </div>
+
+      <pre id="log" class="log"></pre>
+
+      <script src="/socket.io/socket.io.js"></script>
+      <script src="/client.js"></script>
+    </div>
+  </body>
+</html>

@@ -1,0 +1,28 @@
+body { font-family: system-ui, -apple-system, sans-serif; padding: 24px; }
+.container { max-width: 480px; margin: 0 auto; }
+#clock { font-size: 3.5rem; margin: 8px 0; }
+.controls { margin-top: 12px; }
+.controls button { margin-right: 8px; padding: 8px 12px; }
+#rewindSeconds { width: 90px; margin-left: 8px; padding: 6px; }
+#info { margin-top: 8px; color: #444; }
+.cues { margin-top: 12px; }
+.cue { padding: 8px 12px; }
+.cue.hit { background: #ff8a8a; }
+.log { margin-top: 12px; background: #f6f6f6; padding: 8px; max-height: 200px; overflow: auto; font-size: 12px; }
+body{font-family:system-ui,-apple-system,Segoe UI,Roboto,"Helvetica Neue",Arial;margin:0;display:flex;align-items:center;justify-content:center;height:100vh;background:#0f172a;color:#e6eef8}
+main{width:100%;max-width:420px;padding:24px;text-align:center}
+#clock{font-size:6vmax;background:rgba(255,255,255,0.04);padding:22px;border-radius:12px;margin:18px 0}
+#controls{display:flex;gap:8px;justify-content:center;flex-wrap:wrap}
+button{padding:10px 14px;border-radius:8px;border:0;background:#2563eb;color:white;font-weight:600}
+/* cue button styles */
+.cue{background:#334155;color:#fff;padding:10px 14px;border-radius:8px;font-weight:700}
+.cue.flash{animation:cue-flash 500ms ease-in-out infinite; background:#ef4444}
+.cue.hit{background:#dc2626;box-shadow:0 0 12px rgba(220,38,38,0.8)}
+
+@keyframes cue-flash{
+	0%{transform:scale(1);opacity:1}
+	50%{transform:scale(1.06);opacity:0.6}
+	100%{transform:scale(1);opacity:1}
+}
+input[type=number]{padding:10px;border-radius:8px;border:0;width:80px}
+#info{margin-top:12px;color:#9fb0d9}
