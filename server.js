@@ -9,9 +9,11 @@ const { Server: IOServer } = require('socket.io');
 const PORT = process.env.PORT || 3000;
 
 const server = http.createServer((req, res) => {
-  let filePath = '.' + req.url;
-  if (filePath === './') filePath = './public/index.html';
-  filePath = path.join(__dirname, filePath);
+  // Serve files from ./public
+  const urlPath = req.url.split('?')[0];
+  let filePath;
+  if (urlPath === '/' || urlPath === '') filePath = path.join(__dirname, 'public', 'index.html');
+  else filePath = path.join(__dirname, 'public', urlPath);
 
   const ext = path.extname(filePath) || '.html';
   const map = {
@@ -56,6 +58,10 @@ io.on('connection', (socket) => {
     }
     running = true;
     lastTick = Date.now();
+    // announce timer start with authoritative server timestamp
+    const t = Date.now();
+    // include current elapsed (seconds) so clients can adjust their local base
+    io.emit('timer-start', { t, elapsed });
     broadcastState(true);
   });
 
@@ -65,6 +71,9 @@ io.on('connection', (socket) => {
     if (running) elapsed += (now - lastTick) / 1000;
     running = false;
     lastTick = now;
+    // announce timer stop
+    const t = Date.now();
+    io.emit('timer-stop', { t });
     broadcastState(true);
   });
 
@@ -72,7 +81,24 @@ io.on('connection', (socket) => {
     elapsed = 0;
     running = false;
     lastTick = Date.now();
+    // announce reset with current elapsed so clients can snap to zero
+    const t = Date.now();
+    io.emit('timer-reset', { t, elapsed });
     broadcastState(true);
+  });
+
+  // Support NTP-like sync requests from socket.io clients
+  socket.on('sync-request', (payload) => {
+    try {
+      const id = payload && payload.id;
+      const token = payload && payload.token;
+      // token validation could be added here
+      const serverReceive = Date.now();
+      const serverSend = Date.now();
+      socket.emit('sync-response', { id, t1: serverReceive, t2: serverSend });
+    } catch (e) {
+      // ignore
+    }
   });
 
   socket.on('disconnect', () => {

@@ -1,18 +1,41 @@
-/* filepath: /Users/jthompson/Desktop/shared-timer/public/clock.js */
-(() => {
-    const status = document.getElementById('status');
-    const timeEl = document.getElementById('time');
-    const syncBtn = document.getElementById('sync');
-    const debugEl = document.getElementById('debug');
-
+/* Socket.IO adapted clock client (preserves original sync logic)
+     - Uses socket.io for transport
+     - Responds to 'sync-response', 'timer-start', 'timer-stop', 'timer-reset' and 'state'
+     - Compatible with both old (`start-timer`, `stop-timer`, `reset-timer`, `elapsed`, `time`) and
+         new (`start`, `pause`, `rewind`, `clock`, `info`) UI element IDs.
+*/
+(function () {
     const params = new URLSearchParams(location.search);
     const TOKEN = params.get('token');
     const AUTO_START = true;
 
-    const wsUrl = (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host;
-    let ws = null;
-    let offset = 0; // server_time - local_time
+    const socket = (typeof io === 'function') ? io() : null;
+
+    // DOM elements (support old and new IDs)
+    const status = document.getElementById('status');
+    const timeEl = document.getElementById('time');
+    const clockEl = document.getElementById('clock');
+    const syncBtn = document.getElementById('sync');
+    const debugEl = document.getElementById('debug');
+    const elapsedEl = document.getElementById('elapsed');
+    const infoEl = document.getElementById('info');
+
+    const startBtn = document.getElementById('start') || document.getElementById('start-timer');
+    const pauseBtn = document.getElementById('pause') || document.getElementById('stop-timer');
+    const rewindBtn = document.getElementById('rewind') || document.getElementById('reset-timer');
+    const rewindInput = document.getElementById('rewindSeconds');
+    const cue1Btn = document.getElementById('cue1');
+
+    let offset = 0; // server_time - local_time (ms)
     let bestSample = null;
+    let pending = new Map();
+    let nextId = 1;
+
+    let timerStart = null;
+    let timerRunning = false;
+    // cue state for flashing UI (local prediction + server events)
+    const cueStates = {};
+    const localCues = [ { id: 'cue1', target: 45, lead: 4 } ];
 
     function logDebug(text) {
         const t = new Date().toISOString();
@@ -25,58 +48,16 @@
         if (console && console.log) console.log('[clock-debug]', text);
     }
 
-    function connect() {
-        if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) return;
-        try {
-            ws = new WebSocket(wsUrl);
-        } catch (e) {
-            logDebug('WebSocket construct error: ' + (e && e.message));
-            return;
-        }
-
-        ws.addEventListener('open', () => {
-            if (status) status.textContent = 'connected';
-            logDebug('ws open');
-            if (AUTO_START) {
-                startSyncing();
-                if (syncBtn) { syncBtn.disabled = true; syncBtn.textContent = 'Syncing...'; }
-            }
-        });
-
-        ws.addEventListener('close', (ev) => {
-            if (status) status.textContent = 'disconnected';
-            logDebug('ws close ' + (ev && ev.code ? ev.code : ''));
-        });
-
-        ws.addEventListener('error', (err) => {
-            logDebug('ws error ' + (err && err.message ? err.message : err));
-        });
-
-        ws.addEventListener('message', (ev) => {
-            const data = String(ev.data || '').slice(0, 2000);
-            logDebug('recv ' + data);
-            let msg = null;
-            try { msg = JSON.parse(ev.data); } catch (e) { logDebug('parse error: ' + (e && e.message)); return; }
-
-            if (msg.type === 'sync-response') handleSyncResponse(msg);
-            else if (msg.type === 'sync-error') { logDebug('sync-error: ' + (msg.message || '')); if (status) status.textContent = 'error: ' + (msg.message || ''); }
-            else if (msg.type === 'timer-start') handleTimerStart(msg);
-            else if (msg.type === 'timer-stop') handleTimerStop(msg);
-            else if (msg.type === 'timer-reset') handleTimerReset(msg);
-        });
-    }
-
-    let pending = new Map();
-    let nextId = 1;
+    function setStatus(s) { if (status) status.textContent = s; }
 
     function sendSync() {
-        if (!ws || ws.readyState !== WebSocket.OPEN) return;
+        if (!socket || socket.disconnected) return;
         const id = (nextId++).toString();
         const t0 = Date.now();
         pending.set(id, { t0 });
-        const payload = { type: 'sync-request', id, t0 };
+        const payload = { id, t0 };
         if (TOKEN) payload.token = TOKEN;
-        try { ws.send(JSON.stringify(payload)); logDebug('sent sync-request ' + id); } catch (e) { logDebug('send error ' + (e && e.message)); }
+        try { socket.emit('sync-request', payload); logDebug('sent sync-request ' + id); } catch (e) { logDebug('send error ' + (e && e.message)); }
     }
 
     function handleSyncResponse(msg) {
@@ -93,44 +74,22 @@
         if (!bestSample || delay < bestSample.delay) {
             bestSample = { delay, offset: off, at: now };
             offset = off;
-            if (status) status.textContent = `offset ${Math.round(offset)}ms, delay ${Math.round(delay)}ms`;
+            setStatus(`offset ${Math.round(offset)}ms, delay ${Math.round(delay)}ms`);
             logDebug(`sample id=${msg.id} offset=${Math.round(offset)} delay=${Math.round(delay)}`);
         }
     }
 
     let syncTimer = null;
     function startSyncing() {
-        if (!ws || ws.readyState !== WebSocket.OPEN) connect();
+        if (!socket || socket.disconnected) return;
         const burst = () => { for (let i = 0; i < 6; i++) sendSync(); };
         burst();
         if (syncTimer) clearInterval(syncTimer);
         syncTimer = setInterval(burst, 5000);
     }
+    function stopSyncing() { if (syncTimer) { clearInterval(syncTimer); syncTimer = null; } }
 
-    function stopSyncing() {
-        if (syncTimer) { clearInterval(syncTimer); syncTimer = null; }
-    }
-
-    function tick() {
-        if (timeEl) {
-            const now = new Date(Date.now() + offset);
-            const hh = String(now.getHours()).padStart(2, '0');
-            const mm = String(now.getMinutes()).padStart(2, '0');
-            const ss = String(now.getSeconds()).padStart(2, '0');
-            timeEl.textContent = `${hh}:${mm}:${ss}`;
-        }
-        requestAnimationFrame(tick);
-    }
-
-    const elapsedEl = document.getElementById('elapsed');
-    const startBtn = document.getElementById('start-timer');
-    const stopBtn = document.getElementById('stop-timer');
-    const resetBtn = document.getElementById('reset-timer');
-
-    let timerStart = null;
-    let timerRunning = false;
-
-    function formatElapsed(ms) {
+    function formatElapsedMs(ms) {
         if (ms < 0) ms = 0;
         const total = Math.floor(ms);
         const minutes = Math.floor(total / 60000);
@@ -139,52 +98,193 @@
         return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}.${String(millis).padStart(3, '0')}`;
     }
 
-    function updateElapsed() {
-        if (!elapsedEl) return;
+    function formatClockSeconds(sec) {
+        if (!Number.isFinite(sec)) sec = 0;
+        sec = Math.max(0, Math.floor(sec));
+        const mm = Math.floor(sec / 60).toString().padStart(2, '0');
+        const ss = (sec % 60).toString().padStart(2, '0');
+        return `${mm}:${ss}`;
+    }
+
+    function updateElapsedLoop() {
         if (!timerStart || !timerRunning) return;
         const now = Date.now() + offset;
-        const elapsed = now - timerStart;
-        elapsedEl.textContent = formatElapsed(elapsed);
-        requestAnimationFrame(updateElapsed);
+        const elapsed = now - timerStart; // ms
+        if (elapsedEl) elapsedEl.textContent = formatElapsedMs(elapsed);
+        if (clockEl) clockEl.textContent = formatClockSeconds(Math.floor(elapsed / 1000));
+        // local cue detection (based on displayed time) to ensure flash lines up with UI
+        const displayedSeconds = Math.floor(elapsed / 1000);
+        localCues.forEach(cue => {
+            const cur = displayedSeconds;
+            if (!cueStates[cue.id]) {
+                if (cur >= (cue.target - cue.lead) && cur < cue.target) {
+                    cueStates[cue.id] = 'pre';
+                }
+            }
+            if (cueStates[cue.id] !== 'hit' && cur >= cue.target) {
+                cueStates[cue.id] = 'hit';
+            }
+        });
+        // render cue button state
+        if (cue1Btn) {
+            const st = cueStates['cue1'];
+            cue1Btn.classList.toggle('flash', st === 'pre');
+            cue1Btn.classList.toggle('hit', st === 'hit');
+            if (st === 'hit') cue1Btn.textContent = 'CUE 1';
+            else cue1Btn.textContent = 'CUE 0';
+        }
+        requestAnimationFrame(updateElapsedLoop);
     }
 
     function handleTimerStart(msg) {
-        timerStart = msg.t;
+        // msg.t is server timestamp in ms
+        // msg.elapsed (optional) is server-side elapsed in seconds at that timestamp
+        const serverT = Number(msg && msg.t) || Date.now();
+        const initialMs = (msg && typeof msg.elapsed === 'number') ? Math.floor(Number(msg.elapsed) * 1000) : 0;
+        // timerStart is set so that (Date.now()+offset - timerStart) yields elapsed including initialMs
+        timerStart = serverT - initialMs;
         timerRunning = true;
-        logDebug('timer-start received t=' + msg.t);
-        updateElapsed();
+        logDebug('timer-start received t=' + timerStart);
+        updateElapsedLoop();
     }
-
     function handleTimerStop(msg) {
         if (!timerStart) return;
         timerRunning = false;
         const now = Date.now() + offset;
         const elapsed = now - timerStart;
-        if (elapsedEl) elapsedEl.textContent = formatElapsed(elapsed);
-        logDebug('timer-stop received t=' + msg.t + ' elapsed=' + elapsed);
+        if (elapsedEl) elapsedEl.textContent = formatElapsedMs(elapsed);
+        if (clockEl) clockEl.textContent = formatClockSeconds(Math.floor(elapsed / 1000));
+        // update rewind input to paused time (seconds)
+        if (rewindInput) {
+            try { rewindInput.value = String(Math.floor(elapsed / 1000)); } catch (e) {}
+        }
+        logDebug('timer-stop received');
     }
-
     function handleTimerReset(msg) {
-        timerStart = null;
-        timerRunning = false;
+        // msg may include { t, elapsed }
+        timerStart = null; timerRunning = false;
+        // ensure displays reset to zero
         if (elapsedEl) elapsedEl.textContent = '00:00.000';
+        if (clockEl) clockEl.textContent = '00:00';
+        // reset the rewind input so subsequent Start uses 0
+        if (rewindInput) try { rewindInput.value = '0'; } catch (e) {}
+        // clear local cue states
+        Object.keys(cueStates).forEach(k => delete cueStates[k]);
+        if (cue1Btn) { cue1Btn.classList.remove('flash', 'hit'); cue1Btn.textContent = 'CUE 0'; }
         logDebug('timer-reset received');
     }
 
-    function setupHandlers() {
-        if (syncBtn) {
-            const handler = () => { logDebug('start button clicked'); if (!ws || ws.readyState !== WebSocket.OPEN) connect(); startSyncing(); syncBtn.disabled = true; syncBtn.textContent = 'Syncing...'; };
-            syncBtn.addEventListener('click', handler);
-            syncBtn.addEventListener('touchstart', handler);
-        }
-
-        if (startBtn) startBtn.addEventListener('click', () => { if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'timer-start', token: TOKEN })); else logDebug('start-timer: ws not open'); });
-        if (stopBtn) stopBtn.addEventListener('click', () => { if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'timer-stop', token: TOKEN })); else logDebug('stop-timer: ws not open'); });
-        if (resetBtn) resetBtn.addEventListener('click', () => { if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'timer-reset', token: TOKEN })); else handleTimerReset({}); });
+    // handle authoritative state messages (optional)
+    if (socket) {
+        socket.on('connect', () => {
+            setStatus('connected');
+            logDebug('socket connected');
+            if (AUTO_START) { startSyncing(); if (syncBtn) { syncBtn.disabled = true; syncBtn.textContent = 'Syncing...'; } }
+        });
+        socket.on('disconnect', () => { setStatus('disconnected'); logDebug('socket disconnected'); });
+        socket.on('sync-response', handleSyncResponse);
+        socket.on('timer-start', handleTimerStart);
+        socket.on('timer-stop', handleTimerStop);
+        socket.on('timer-reset', handleTimerReset);
+        socket.on('cue', (c) => {
+            if (!c) return;
+            logDebug('cue event ' + JSON.stringify(c));
+            // reset
+            if (c.phase === 'reset') {
+                delete cueStates[c.id || 'cue1'];
+                if (cue1Btn) {
+                    cue1Btn.classList.remove('flash', 'hit');
+                    cue1Btn.textContent = 'CUE 0';
+                }
+                return;
+            }
+            if (!c.id) return;
+            if (c.phase === 'pre') {
+                if (!cueStates[c.id]) cueStates[c.id] = 'pre';
+            } else if (c.phase === 'hit') {
+                cueStates[c.id] = 'hit';
+            }
+            // reflect immediately in UI
+            if (cue1Btn) {
+                const st = cueStates['cue1'];
+                cue1Btn.classList.toggle('flash', st === 'pre');
+                cue1Btn.classList.toggle('hit', st === 'hit');
+                if (st === 'hit') cue1Btn.textContent = 'CUE 1';
+                else cue1Btn.textContent = 'CUE 0';
+            }
+        });
+        socket.on('state', (s) => {
+            if (!s) return;
+            // if server asks to snap, set display to server elapsed
+            if (s.snap) {
+                if (typeof s.elapsed === 'number') {
+                    const ms = Math.floor(Number(s.elapsed) * 1000);
+                    if (elapsedEl) elapsedEl.textContent = formatElapsedMs(ms);
+                    if (clockEl) clockEl.textContent = formatClockSeconds(Math.floor(ms / 1000));
+                }
+            }
+        });
+    } else {
+        setStatus('no-socket');
     }
 
-    setupHandlers();
-    connect();
-    tick();
+    // UI handlers
+    if (syncBtn) {
+        const handler = () => { logDebug('start sync clicked'); if (socket && socket.connected) startSyncing(); syncBtn.disabled = true; syncBtn.textContent = 'Syncing...'; };
+        syncBtn.addEventListener('click', handler);
+        syncBtn.addEventListener('touchstart', handler);
+    }
+
+    function parseTimeInput(v) {
+        // Accept formats: MM:SS(.ms), M:SS, or plain seconds (integer or float)
+        if (!v) return null;
+        v = String(v).trim();
+        // mm:ss or m:ss(.ms)
+        const m = v.match(/^\s*(\d+):(\d+(?:\.\d+)?)\s*$/);
+        if (m) {
+            const minutes = Number(m[1]);
+            const seconds = Number(m[2]);
+            if (Number.isFinite(minutes) && Number.isFinite(seconds)) return minutes * 60 + seconds;
+            return null;
+        }
+        // plain number (seconds)
+        const n = Number(v);
+        if (!Number.isNaN(n) && isFinite(n) && n >= 0) return n;
+        return null;
+    }
+
+    if (startBtn) startBtn.addEventListener('click', () => {
+        if (!socket || socket.disconnected) { logDebug('start: socket not connected'); return; }
+        const v = rewindInput && rewindInput.value && rewindInput.value.trim();
+        if (v) {
+            const secs = parseTimeInput(v);
+            if (secs !== null) {
+                socket.emit('start', secs);
+                return;
+            }
+            logDebug('invalid start value: ' + v);
+            return;
+        }
+        socket.emit('start');
+    });
+    if (pauseBtn) pauseBtn.addEventListener('click', () => {
+        if (timerStart && timerRunning && rewindInput) {
+            // compute current elapsed and set the rewind input immediately
+            try {
+                const now = Date.now() + offset;
+                const elapsedMs = now - timerStart;
+                rewindInput.value = String(Math.floor(elapsedMs / 1000));
+            } catch (e) {}
+        }
+        if (socket && socket.connected) socket.emit('pause'); else logDebug('pause: socket not connected');
+    });
+    if (rewindBtn) rewindBtn.addEventListener('click', () => {
+        // ensure the input is reset locally so Start will use 0
+        if (rewindInput) try { rewindInput.value = '0'; } catch (e) {}
+        if (socket && socket.connected) socket.emit('rewind'); else { handleTimerReset({}); }
+    });
+
+
     logDebug('client initialized');
 })();
+    
