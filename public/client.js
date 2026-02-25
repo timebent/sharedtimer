@@ -8,7 +8,8 @@
   const rewindBtn = document.getElementById('rewind');
   const rewindInput = document.getElementById('rewindSeconds');
   const infoEl = document.getElementById('info');
-  const cue1Btn = document.getElementById('cue1');
+  const cuesContainer = document.querySelector('.cues');
+  const cueDisplay = document.getElementById('cueDisplay');
   const logEl = document.getElementById('log');
 
   let serverElapsed = 0; // seconds
@@ -44,13 +45,22 @@
 
   // Optional simple local cue: flash when reaching 45s
   function checkCues() {
-    if (!cue1Btn) return;
-    const target = 45; // seconds
-    if (displayElapsed >= target && cue1Btn.dataset.hit !== '1') {
-      cue1Btn.dataset.hit = '1';
-      cue1Btn.classList.add('hit');
-      cue1Btn.textContent = 'CUE 1';
-      log(`Cue hit at ${fmtTime(displayElapsed)}`);
+    // update single display: flash when within FLASH_LEAD of any upcoming cue
+    let anyPre = false;
+    localCues.forEach(cue => {
+      if (counted.has(cue.id)) return;
+      if (displayElapsed >= (cue.target - FLASH_LEAD) && displayElapsed < cue.target) {
+        anyPre = true;
+      }
+      if (displayElapsed >= cue.target) {
+        counted.add(cue.id);
+        cueCount++;
+        if (cueDisplay) cueDisplay.textContent = `Cues: ${cueCount}`;
+        log(`Cue ${cue.id} hit at ${fmtTime(displayElapsed)}`);
+      }
+    });
+    if (cueDisplay) {
+      cueDisplay.classList.toggle('flash', anyPre);
     }
   }
 
@@ -117,7 +127,27 @@ let waitingForSnap = false;
 // Local cue definitions are used so the UI can flash in tight sync with the
 // displayed time (instead of relying solely on discrete server events).
 // Each cue has an `id`, `target` second, and `lead` seconds to start the pre-flash.
-const localCues = [ { id: 'cue1', target: 45, lead: 4 } ];
+// cues in seconds; flash starts 4s before each cue
+const localCues = [ { id: 'cue2', target: 30 }, { id: 'cue1', target: 45 }, { id: 'cue3', target: 90 } ];
+const FLASH_LEAD = 4;
+let cueCount = 0;
+const counted = new Set();
+
+function setupCueButtons() {
+  if (!cuesContainer) return;
+  localCues.forEach(cue => {
+    let btn = document.getElementById(cue.id);
+    if (!btn) {
+      btn = document.createElement('button');
+      btn.id = cue.id;
+      btn.className = 'cue';
+      btn.textContent = 'CUE 0';
+      cuesContainer.appendChild(btn);
+    }
+    cueButtons[cue.id] = btn;
+  });
+}
+setupCueButtons();
 
 // Format seconds as MM:SS. Defensively handle non-finite inputs.
 function fmtTime(s) {
@@ -134,15 +164,16 @@ function render() {
   clock.textContent = fmtTime(displayElapsed);
   info.textContent = `${state.running ? 'Running' : 'Paused'}`;
   // render cue button state
-  if (cue1Btn) {
-    const st = cueStates['cue1'];
-    cue1Btn.classList.toggle('flash', st === 'pre');
-    cue1Btn.classList.toggle('hit', st === 'hit');
-    // update label text: default "CUE 0" until hit
-    // The label is `CUE 0` until the cue has been hit, then stays `CUE 1`.
-    if (st === 'hit') cue1Btn.textContent = 'CUE 1';
-    else cue1Btn.textContent = 'CUE 0';
-  }
+  // update UI for all cue buttons
+  Object.keys(cueButtons).forEach(id => {
+    const btn = cueButtons[id];
+    const st = cueStates[id];
+    if (!btn) return;
+    btn.classList.toggle('flash', st === 'pre');
+    btn.classList.toggle('hit', st === 'hit');
+    if (st === 'hit') btn.textContent = 'CUE 1';
+    else btn.textContent = 'CUE 0';
+  });
 }
 
 socket.on('state', (s) => {
@@ -178,6 +209,9 @@ socket.on('cue', (c) => {
   // reset signal
   if (c.phase === 'reset') {
     delete cueStates[c.id || 'cue1'];
+    // reset single cue display
+    if (cueDisplay) { cueDisplay.classList.remove('flash','hit'); cueDisplay.textContent = 'Cues: 0'; }
+    cueCount = 0; counted.clear();
     render();
     return;
   }
@@ -187,6 +221,17 @@ socket.on('cue', (c) => {
     if (!cueStates[c.id]) cueStates[c.id] = 'pre';
   } else if (c.phase === 'hit') {
     cueStates[c.id] = 'hit';
+  }
+  // update corresponding button immediately
+  const btn = cueButtons[c.id];
+  // reflect on single display
+  if (cueDisplay) {
+    const st = cueStates[c.id];
+    cueDisplay.classList.toggle('flash', st === 'pre');
+    if (st === 'hit') {
+      cueCount++;
+      cueDisplay.textContent = `Cues: ${cueCount}`;
+    }
   }
   render();
 });

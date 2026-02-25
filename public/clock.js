@@ -24,7 +24,8 @@
     const pauseBtn = document.getElementById('pause') || document.getElementById('stop-timer');
     const rewindBtn = document.getElementById('rewind') || document.getElementById('reset-timer');
     const rewindInput = document.getElementById('rewindSeconds');
-    const cue1Btn = document.getElementById('cue1');
+    const cuesContainer = document.querySelector('.cues');
+    const cueDisplay = document.getElementById('cueDisplay');
 
     let offset = 0; // server_time - local_time (ms)
     let bestSample = null;
@@ -35,7 +36,17 @@
     let timerRunning = false;
     // cue state for flashing UI (local prediction + server events)
     const cueStates = {};
-    const localCues = [ { id: 'cue1', target: 45, lead: 4 } ];
+    // define cues (seconds). Flash will start 4 seconds before each cue.
+    const localCues = [
+        { id: 'cue2', target: 30 },
+        { id: 'cue1', target: 45 },
+        { id: 'cue3', target: 90 }
+    ];
+    const FLASH_LEAD = 4; // seconds before cue to start flashing
+    let cueCount = 0;
+    const counted = new Set();
+
+    // no per-cue buttons in this client; we use a single `cueDisplay`
 
     function logDebug(text) {
         const t = new Date().toISOString();
@@ -106,6 +117,35 @@
         return `${mm}:${ss}`;
     }
 
+    // Recompute cue state (counted/pre/hit) for a given displayed second value.
+    // This is used after seeking/starting so cues that occurred before the
+    // displayed time are treated as already counted, and upcoming cues can
+    // be re-triggered when the timer advances past them.
+    function refreshCueState(displayedSeconds) {
+        if (!Number.isFinite(displayedSeconds)) displayedSeconds = 0;
+        // reset
+        counted.clear();
+        cueCount = 0;
+        Object.keys(cueStates).forEach(k => delete cueStates[k]);
+        let anyPre = false;
+        localCues.forEach(cue => {
+            const lead = (typeof cue.lead === 'number') ? cue.lead : FLASH_LEAD;
+            if (displayedSeconds >= cue.target) {
+                counted.add(cue.id);
+                cueStates[cue.id] = 'hit';
+                cueCount++;
+            } else if (displayedSeconds >= (cue.target - lead)) {
+                cueStates[cue.id] = 'pre';
+                anyPre = true;
+            }
+        });
+        if (cueDisplay) {
+            cueDisplay.textContent = `Cues: ${cueCount}`;
+            cueDisplay.classList.toggle('flash', anyPre);
+            cueDisplay.classList.remove('hit');
+        }
+    }
+
     function updateElapsedLoop() {
         if (!timerStart || !timerRunning) return;
         const now = Date.now() + offset;
@@ -113,25 +153,32 @@
         if (elapsedEl) elapsedEl.textContent = formatElapsedMs(elapsed);
         if (clockEl) clockEl.textContent = formatClockSeconds(Math.floor(elapsed / 1000));
         // local cue detection (based on displayed time) to ensure flash lines up with UI
-        const displayedSeconds = Math.floor(elapsed / 1000);
+        const displayedSeconds = elapsed / 1000; // allow fractional comparison
+        let anyPre = false;
         localCues.forEach(cue => {
-            const cur = displayedSeconds;
-            if (!cueStates[cue.id]) {
-                if (cur >= (cue.target - cue.lead) && cur < cue.target) {
-                    cueStates[cue.id] = 'pre';
-                }
-            }
-            if (cueStates[cue.id] !== 'hit' && cur >= cue.target) {
+            if (counted.has(cue.id)) return;
+            const lead = (typeof cue.lead === 'number') ? cue.lead : FLASH_LEAD;
+            // hit detection (only once)
+            if (displayedSeconds >= cue.target) {
+                counted.add(cue.id);
                 cueStates[cue.id] = 'hit';
+                cueCount++;
+                if (cueDisplay) {
+                    cueDisplay.textContent = `Cues: ${cueCount}`;
+                    cueDisplay.classList.add('hit');
+                    // remove the hit visual after a short moment
+                    setTimeout(() => { if (cueDisplay) cueDisplay.classList.remove('hit'); }, 800);
+                }
+                return;
+            }
+            // pre-flash window
+            if (displayedSeconds >= (cue.target - lead) && displayedSeconds < cue.target) {
+                cueStates[cue.id] = 'pre'; anyPre = true;
             }
         });
-        // render cue button state
-        if (cue1Btn) {
-            const st = cueStates['cue1'];
-            cue1Btn.classList.toggle('flash', st === 'pre');
-            cue1Btn.classList.toggle('hit', st === 'hit');
-            if (st === 'hit') cue1Btn.textContent = 'CUE 1';
-            else cue1Btn.textContent = 'CUE 0';
+        // update single cue display flash state (keep hit handling separate)
+        if (cueDisplay) {
+            cueDisplay.classList.toggle('flash', anyPre);
         }
         requestAnimationFrame(updateElapsedLoop);
     }
@@ -145,6 +192,12 @@
         timerStart = serverT - initialMs;
         timerRunning = true;
         logDebug('timer-start received t=' + timerStart);
+        // refresh cue state based on the current displayed time so past cues are marked correctly
+        try {
+            const now = Date.now() + offset;
+            const displayedSeconds = (now - timerStart) / 1000;
+            refreshCueState(displayedSeconds);
+        } catch (e) {}
         updateElapsedLoop();
     }
     function handleTimerStop(msg) {
@@ -170,7 +223,12 @@
         if (rewindInput) try { rewindInput.value = '0'; } catch (e) {}
         // clear local cue states
         Object.keys(cueStates).forEach(k => delete cueStates[k]);
-        if (cue1Btn) { cue1Btn.classList.remove('flash', 'hit'); cue1Btn.textContent = 'CUE 0'; }
+        // reset cue display
+        if (cueDisplay) {
+            cueDisplay.classList.remove('flash', 'hit');
+            cueDisplay.textContent = 'Cues: 0';
+        }
+        cueCount = 0; counted.clear();
         logDebug('timer-reset received');
     }
 
@@ -192,25 +250,21 @@
             // reset
             if (c.phase === 'reset') {
                 delete cueStates[c.id || 'cue1'];
-                if (cue1Btn) {
-                    cue1Btn.classList.remove('flash', 'hit');
-                    cue1Btn.textContent = 'CUE 0';
-                }
+                if (cueDisplay) { cueDisplay.classList.remove('flash','hit'); cueDisplay.textContent = 'Cues: 0'; }
+                cueCount = 0; counted.clear();
                 return;
             }
             if (!c.id) return;
             if (c.phase === 'pre') {
                 if (!cueStates[c.id]) cueStates[c.id] = 'pre';
+                if (cueDisplay) cueDisplay.classList.add('flash');
             } else if (c.phase === 'hit') {
                 cueStates[c.id] = 'hit';
-            }
-            // reflect immediately in UI
-            if (cue1Btn) {
-                const st = cueStates['cue1'];
-                cue1Btn.classList.toggle('flash', st === 'pre');
-                cue1Btn.classList.toggle('hit', st === 'hit');
-                if (st === 'hit') cue1Btn.textContent = 'CUE 1';
-                else cue1Btn.textContent = 'CUE 0';
+                if (!counted.has(c.id)) {
+                    counted.add(c.id);
+                    cueCount++;
+                    if (cueDisplay) cueDisplay.textContent = `Cues: ${cueCount}`;
+                }
             }
         });
         socket.on('state', (s) => {
@@ -276,6 +330,11 @@
                 rewindInput.value = String(Math.floor(elapsedMs / 1000));
             } catch (e) {}
         }
+        // refresh cue UI to reflect paused/seeked time so future cues will retrigger
+        try {
+            const v = rewindInput && rewindInput.value ? parseTimeInput(rewindInput.value) : null;
+            if (v !== null) refreshCueState(Number(v));
+        } catch (e) {}
         if (socket && socket.connected) socket.emit('pause'); else logDebug('pause: socket not connected');
     });
     if (rewindBtn) rewindBtn.addEventListener('click', () => {
