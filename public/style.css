@@ -9,11 +9,17 @@ body { font-family: system-ui, -apple-system, sans-serif; padding: 24px; }
 .cue { padding: 8px 12px; }
 .cue.hit { background: #ff8a8a; }
 .log { margin-top: 12px; background: #f6f6f6; padding: 8px; max-height: 200px; overflow: auto; font-size: 12px; }
-body{font-family:system-ui,-apple-system,Segoe UI,Roboto,"Helvetica Neue",Arial;margin:0;display:flex;align-items:center;justify-content:center;height:100vh;background:#0f172a;color:#e6eef8}
-main{width:100%;max-width:420px;padding:24px;text-align:center}
-#clock{font-size:6vmax;background:rgba(255,255,255,0.04);padding:22px;border-radius:12px;margin:18px 0}
-#controls{display:flex;gap:8px;justify-content:center;flex-wrap:wrap}
-button{padding:10px 14px;border-radius:8px;border:0;background:#2563eb;color:white;font-weight:600}
+/* Page base */
+body { font-family: system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial; margin: 0; background: #0f172a; color: #e6eef8; }
+.container { max-width: 720px; margin: 20px auto; padding: 18px; }
+
+/* Clock styling */
+/* Clock: centered content */
+#clock { font-size: 6vmax; background: rgba(255,255,255,0.04); padding: 22px; border-radius: 12px; margin: 18px 0; display: flex; align-items: center; justify-content: center; text-align: center; }
+
+/* Controls layout */
+.controls { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin-top: 12px; }
+button { padding: 10px 14px; border-radius: 8px; border: 0; background: #2563eb; color: white; font-weight: 600; }
 /* cue button styles */
 .cue{background:#334155;color:#fff;padding:10px 14px;border-radius:8px;font-weight:700}
 .cue.flash{animation:cue-flash 500ms ease-in-out infinite; background:#ef4444}
@@ -46,3 +52,22 @@ input[type=number]{padding:10px;border-radius:8px;border:0;width:80px}
 /* full-screen white flash overlay for strong visual cue */
 .screen-flash { position: fixed; inset: 0; background: #fff; opacity: 0; pointer-events: none; transition: opacity 120ms ease; z-index: 9999; }
 .screen-flash.on { opacity: 0.9; }
+
+/* Mobile / small-screen adjustments to improve touch targets and readability */
+/* Apply responsive sizing for small and medium devices */
+@media (max-width: 768px) {
+	body { padding: 14px; }
+	main { padding: 18px; max-width: 100%; }
+	/* Bigger clock for phones */
+	#clock { font-size: 12vmin !important; padding: 28px !important; }
+	/* Larger controls */
+	button, .controls button { padding: 14px 18px !important; font-size: 1.05rem; border-radius: 10px; }
+	/* make inputs easier to tap */
+	#rewindSeconds, input[type=number] { padding: 12px !important; width: 120px !important; font-size: 1rem; }
+	/* larger single cue display */
+	.cue-display { font-size: 1.25rem !important; padding: 14px 18px; }
+	.cue { padding: 12px 16px; font-size: 1rem; }
+	.log { font-size: 13px; }
+	/* increase spacing for dropdown */
+	.cue-select { margin-top: 22px; }
+}
