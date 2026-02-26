@@ -1,32 +1,22 @@
-body { font-family: system-ui, -apple-system, sans-serif; padding: 24px; }
-.container { max-width: 480px; margin: 0 auto; }
-#clock { font-size: 3.5rem; margin: 8px 0; }
-.controls { margin-top: 12px; }
-.controls button { margin-right: 8px; padding: 8px 12px; }
-#rewindSeconds { width: 90px; margin-left: 8px; padding: 6px; }
-#info { margin-top: 8px; color: #444; }
-.cues { margin-top: 12px; }
-.cue { padding: 8px 12px; }
+body { font-family: system-ui, -apple-system, sans-serif; margin: 0; background: #0f172a; color: #e6eef8; }
+.container { max-width: 720px; margin: 20px auto; padding: 20px; }
+/* prominent clock */
+#clock { font-size: 9vmin; background: rgba(255,255,255,0.04); padding: 28px; border-radius: 14px; margin: 18px 0; display:flex;align-items:center;justify-content:center;text-align:center;font-weight:700 }
+.controls { margin-top: 14px; display:flex; gap: 10px; justify-content:center; flex-wrap:wrap }
+.controls button { padding: 12px 18px; font-size: 1.05rem; }
+#rewindSeconds { width: 120px; margin-left: 8px; padding: 10px; font-size: 1rem; }
+#info { margin-top: 10px; color: #9fb0d9; }
+.cues { margin-top: 18px; display:flex; align-items:center; gap:12px }
+.cue { padding: 12px 16px; }
 .cue.hit { background: #ff8a8a; }
-.log { margin-top: 12px; background: #f6f6f6; padding: 8px; max-height: 200px; overflow: auto; font-size: 12px; }
-/* Page base */
-body { font-family: system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial; margin: 0; background: #0f172a; color: #e6eef8; }
-.container { max-width: 720px; margin: 20px auto; padding: 18px; }
-
-/* Clock styling */
-/* Clock: centered content */
-#clock { font-size: 6vmax; background: rgba(255,255,255,0.04); padding: 22px; border-radius: 12px; margin: 18px 0; display: flex; align-items: center; justify-content: center; text-align: center; }
-
-/* Controls layout */
-.controls { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin-top: 12px; }
-button { padding: 10px 14px; border-radius: 8px; border: 0; background: #2563eb; color: white; font-weight: 600; }
+.log { margin-top: 12px; background: #f6f6f6; padding: 12px; max-height: 200px; overflow: auto; font-size: 13px; }
 /* cue button styles */
 .cue{background:#334155;color:#fff;padding:10px 14px;border-radius:8px;font-weight:700}
 .cue.flash{animation:cue-flash 500ms ease-in-out infinite; background:#ef4444}
 .cue.hit{background:#dc2626;box-shadow:0 0 12px rgba(220,38,38,0.8)}
 
 /* single cue display */
-.cue-display{background:#334155;color:#fff;padding:12px 16px;border-radius:10px;font-weight:800;font-size:1.1rem}
+.cue-display{background:#334155;color:#fff;padding:14px 18px;border-radius:10px;font-weight:900;font-size:1.25rem}
 .cue-display.flash{animation:cue-flash 500ms ease-in-out infinite;background:#ef4444}
 .cue-display.hit{background:#dc2626;box-shadow:0 0 12px rgba(220,38,38,0.8)}
 
@@ -34,7 +24,7 @@ button { padding: 10px 14px; border-radius: 8px; border: 0; background: #2563eb;
 #clock.flash{animation:cue-flash 500ms ease-in-out infinite;background:#ef4444;color:#fff;box-shadow:0 0 18px rgba(239,68,68,0.9)}
 
 /* spacing for the cue dropdown to avoid cramped layout */
-.cue-select { margin-top: 18px; display: block; }
+.cue-select { margin-top: 0; flex: 1; display:block }
 
 @keyframes cue-flash{
 	0%{transform:scale(1);opacity:1}
@@ -53,21 +43,48 @@ input[type=number]{padding:10px;border-radius:8px;border:0;width:80px}
 .screen-flash { position: fixed; inset: 0; background: #fff; opacity: 0; pointer-events: none; transition: opacity 120ms ease; z-index: 9999; }
 .screen-flash.on { opacity: 0.9; }
 
-/* Mobile / small-screen adjustments to improve touch targets and readability */
-/* Apply responsive sizing for small and medium devices */
-@media (max-width: 768px) {
-	body { padding: 14px; }
-	main { padding: 18px; max-width: 100%; }
-	/* Bigger clock for phones */
-	#clock { font-size: 12vmin !important; padding: 28px !important; }
-	/* Larger controls */
-	button, .controls button { padding: 14px 18px !important; font-size: 1.05rem; border-radius: 10px; }
-	/* make inputs easier to tap */
-	#rewindSeconds, input[type=number] { padding: 12px !important; width: 120px !important; font-size: 1rem; }
-	/* larger single cue display */
-	.cue-display { font-size: 1.25rem !important; padding: 14px 18px; }
-	.cue { padding: 12px 16px; font-size: 1rem; }
-	.log { font-size: 13px; }
-	/* increase spacing for dropdown */
-	.cue-select { margin-top: 22px; }
+/* Force stacked layout: Cue display full-width above the dropdown */
+.cues { display: flex; flex-direction: column; align-items: stretch; gap: 10px; }
+.cue-display { width: 100%; box-sizing: border-box; }
+.cue-select { width: 100%; position: relative; }
+
+
+/* responsive: stack cues on small screens */
+@media (max-width: 520px) {
+	.cues { flex-direction: column; align-items: stretch; }
+	.cue-display { text-align: left; }
+	.cue-select { margin-top: 10px; }
+	#clock { font-size: 12vmin; padding: 26px }
+}
+
+/* make the cue select element fill the same width as the clock */
+.cue-select select {
+	width: 100%;
+	box-sizing: border-box;
+	padding: 12px 14px;
+	padding-right: 40px;
+	font-size: 1.05rem;
+	border-radius: 10px;
+	border: 1px solid rgba(255,255,255,0.04);
+	background: #334155;
+	color: #ffffff;
+	appearance: none;
+	-webkit-appearance: none;
+}
+
+.cue-select select option {
+	background: #334155;
+	color: #ffffff;
+}
+
+/* right-side dropdown indicator (chevron) */
+.cue-select::after {
+	content: '▾';
+	position: absolute;
+	right: 14px;
+	top: 50%;
+	transform: translateY(-50%);
+	pointer-events: none;
+	color: rgba(255,255,255,0.85);
+	font-size: 1.1rem;
 }

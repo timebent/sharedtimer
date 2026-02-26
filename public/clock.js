@@ -48,6 +48,10 @@
     let cueCount = 0;
     const counted = new Set();
     let lastBeat = null;
+    // remember a recent local cue selection so server 'timer-stop' won't immediately overwrite it
+    let lastLocalCueSelection = null;
+    // when true, ignore incoming server timer updates so local snap remains visible
+    let displayLocked = false;
 
     // no per-cue buttons in this client; we use a single `cueDisplay`
 
@@ -231,6 +235,8 @@
     }
 
     function handleTimerStart(msg) {
+        // if user has locally locked the display (picked a cue), ignore server start
+        if (displayLocked) { logDebug('ignoring timer-start due to display lock'); return; }
         // msg.t is server timestamp in ms
         // msg.elapsed (optional) is server-side elapsed in seconds at that timestamp
         const serverT = Number(msg && msg.t) || Date.now();
@@ -248,15 +254,35 @@
         updateElapsedLoop();
     }
     function handleTimerStop(msg) {
-        if (!timerStart) return;
-        timerRunning = false;
-        const now = Date.now() + offset;
-        const elapsed = now - timerStart;
-        if (elapsedEl) elapsedEl.textContent = formatElapsedMs(elapsed);
-        if (clockEl) clockEl.textContent = formatClockSeconds(Math.floor(elapsed / 1000));
-        // update rewind input to paused time (MM:SS)
-        if (rewindInput) {
-            try { rewindInput.value = formatClockSeconds(Math.floor(elapsed / 1000)); } catch (e) {}
+        // if display is locked by a local selection, ignore server stop to preserve the snap
+        if (displayLocked) { logDebug('ignoring timer-stop due to display lock'); return; }
+        // prefer a recent local cue selection if present (so snapping isn't overwritten)
+        const nowLocal = Date.now();
+        if (!timerStart) {
+            if (lastLocalCueSelection && (nowLocal - lastLocalCueSelection.when) <= 3000) {
+                // apply local selection
+                timerRunning = false;
+                const msSel = Math.floor(Number(lastLocalCueSelection.secs) * 1000);
+                if (elapsedEl) elapsedEl.textContent = formatElapsedMs(msSel);
+                if (clockEl) clockEl.textContent = formatClockSeconds(Math.floor(lastLocalCueSelection.secs));
+                if (rewindInput) {
+                    try { rewindInput.value = formatClockSeconds(Math.floor(lastLocalCueSelection.secs)); } catch (e) {}
+                }
+                // clear marker
+                lastLocalCueSelection = null;
+            } else {
+                // nothing to do
+                return;
+            }
+        } else {
+            timerRunning = false;
+            const now = Date.now() + offset;
+            const elapsed = now - timerStart;
+            if (elapsedEl) elapsedEl.textContent = formatElapsedMs(elapsed);
+            if (clockEl) clockEl.textContent = formatClockSeconds(Math.floor(elapsed / 1000));
+            if (rewindInput) {
+                try { rewindInput.value = formatClockSeconds(Math.floor(elapsed / 1000)); } catch (e) {}
+            }
         }
         // stop any flashing/pulsing when paused
         if (cueDisplay) cueDisplay.classList.remove('flash', 'hit', 'pulse');
@@ -266,12 +292,15 @@
     }
     function handleTimerReset(msg) {
         // msg may include { t, elapsed }
-        timerStart = null; timerRunning = false;
-        // ensure displays reset to zero
-        if (elapsedEl) elapsedEl.textContent = '00:00.000';
-        if (clockEl) clockEl.textContent = '00:00';
-        // reset the rewind input so subsequent Start uses 0 (display as MM:SS)
-        if (rewindInput) try { rewindInput.value = '00:00'; } catch (e) {}
+            // msg may include { t, elapsed }
+            // if display is locked by local cue selection, ignore reset so we keep the snapped view
+            if (displayLocked) { logDebug('ignoring timer-reset due to display lock'); return; }
+            timerStart = null; timerRunning = false;
+            // ensure displays reset to zero (or to server-provided elapsed below)
+            if (elapsedEl) elapsedEl.textContent = '00:00.000';
+            if (clockEl) clockEl.textContent = '00:00';
+            // reset the rewind input so subsequent Start uses 0 (display as MM:SS)
+            if (rewindInput) try { rewindInput.value = '00:00'; } catch (e) {}
         // clear local cue states
         Object.keys(cueStates).forEach(k => delete cueStates[k]);
         // reset cue display
@@ -337,6 +366,8 @@
         });
         socket.on('state', (s) => {
             if (!s) return;
+            // if display is locked by a local cue selection, ignore server state snaps
+            if (displayLocked) return;
             // if server asks to snap, set display to server elapsed
             if (s.snap) {
                 if (typeof s.elapsed === 'number') {
@@ -376,6 +407,8 @@
     }
 
     if (startBtn) startBtn.addEventListener('click', () => {
+        // clear any local display lock when user explicitly starts
+        displayLocked = false;
         if (!socket || socket.disconnected) { logDebug('start: socket not connected'); return; }
         const v = rewindInput && rewindInput.value && rewindInput.value.trim();
         if (v) {
@@ -419,24 +452,33 @@
             const secs = Number(v);
             if (!Number.isFinite(secs)) return;
             try { rewindInput.value = formatClockSeconds(Math.floor(secs)); } catch (e) {}
-            // Update displayed clock immediately for local UX.
-            try {
-                const ms = Math.floor(Number(secs) * 1000);
-                if (timerRunning) {
-                    // Adjust local timerStart so the running display shows the new time.
-                    try { timerStart = Date.now() + offset - ms; } catch (e) {}
-                    // Ensure the update loop is active to continue rendering.
-                    try { updateElapsedLoop(); } catch (e) {}
-                } else {
-                    if (elapsedEl) elapsedEl.textContent = formatElapsedMs(ms);
-                    if (clockEl) clockEl.textContent = formatClockSeconds(Math.floor(secs));
-                    try { refreshCueState(Number(secs)); } catch (e) {}
+
+            // If timer is running, ask server to pause then apply local snap; otherwise just snap locally.
+            const ms = Math.floor(Number(secs) * 1000);
+            if (timerRunning) {
+                if (socket && socket.connected) {
+                    socket.emit('pause');
                 }
-                // Clear any transient pulse/overlay visuals so the snap looks clean.
-                if (cueDisplay) cueDisplay.classList.remove('pulse');
-                if (clockEl) clockEl.classList.remove('pulse');
-                const sf = document.getElementById('screenFlash'); if (sf) sf.classList.remove('on');
-            } catch (e) {}
+                // stop local rendering and clear timerStart so server stop won't try to update based on it
+                timerRunning = false;
+                timerStart = null;
+                // set local marker so incoming server 'timer-stop' will respect our selection
+                try { lastLocalCueSelection = { when: Date.now(), secs: Number(secs) }; } catch (e) { lastLocalCueSelection = null; }
+                // lock the display so server updates won't overwrite this snap
+                displayLocked = true;
+                if (elapsedEl) elapsedEl.textContent = formatElapsedMs(ms);
+                if (clockEl) clockEl.textContent = formatClockSeconds(Math.floor(secs));
+                try { refreshCueState(Number(secs)); } catch (e) {}
+            } else {
+                if (elapsedEl) elapsedEl.textContent = formatElapsedMs(ms);
+                if (clockEl) clockEl.textContent = formatClockSeconds(Math.floor(secs));
+                try { refreshCueState(Number(secs)); } catch (e) {}
+            }
+
+            // Clear any transient pulse/overlay visuals so the snap looks clean.
+            if (cueDisplay) cueDisplay.classList.remove('pulse');
+            if (clockEl) clockEl.classList.remove('pulse');
+            const sf = document.getElementById('screenFlash'); if (sf) sf.classList.remove('on');
         });
         // populate initial dropdown from any existing localCues
         try { populateCueSelect(); } catch (e) {}
