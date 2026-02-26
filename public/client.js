@@ -25,6 +25,21 @@
     return `${mm}:${ss}`;
   }
 
+  function parseTimeInput(v) {
+    if (!v) return null;
+    v = String(v).trim();
+    const m = v.match(/^\s*(\d+):(\d+(?:\.\d+)?)\s*$/);
+    if (m) {
+      const minutes = Number(m[1]);
+      const seconds = Number(m[2]);
+      if (Number.isFinite(minutes) && Number.isFinite(seconds)) return minutes * 60 + seconds;
+      return null;
+    }
+    const n = Number(v);
+    if (!Number.isNaN(n) && isFinite(n) && n >= 0) return n;
+    return null;
+  }
+
   function render() {
     clockEl.textContent = fmtTime(displayElapsed);
     infoEl.textContent = running ? 'Running' : 'Paused';
@@ -70,15 +85,22 @@
   }
 
   startBtn.addEventListener('click', () => {
-    const v = rewindInput.value.trim();
+    const v = rewindInput && rewindInput.value ? rewindInput.value.trim() : '';
     if (v !== '') {
-      const n = Number(v);
-      if (!Number.isNaN(n) && isFinite(n) && n >= 0) socket.emit('start', n);
-    } else {
-      socket.emit('start');
+      const secs = parseTimeInput(v);
+      if (secs !== null) { socket.emit('start', secs); return; }
     }
+    socket.emit('start');
   });
-  pauseBtn.addEventListener('click', () => socket.emit('pause'));
+  pauseBtn.addEventListener('click', () => {
+    // compute local paused time and write MM:SS into input for convenience
+    try {
+      const now = Date.now();
+      const elapsedSec = Math.floor(displayElapsed || 0);
+      if (rewindInput) rewindInput.value = fmtTime(elapsedSec);
+    } catch (e) {}
+    socket.emit('pause');
+  });
   rewindBtn.addEventListener('click', () => socket.emit('rewind'));
 
   // Smooth display loop

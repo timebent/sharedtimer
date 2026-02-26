@@ -37,7 +37,7 @@
     // cue state for flashing UI (local prediction + server events)
     const cueStates = {};
     // define cues (seconds). Flash will start 4 seconds before each cue.
-    const localCues = [
+    let localCues = [
         { id: 'cue2', target: 30 },
         { id: 'cue1', target: 45 },
         { id: 'cue3', target: 90 }
@@ -207,9 +207,9 @@
         const elapsed = now - timerStart;
         if (elapsedEl) elapsedEl.textContent = formatElapsedMs(elapsed);
         if (clockEl) clockEl.textContent = formatClockSeconds(Math.floor(elapsed / 1000));
-        // update rewind input to paused time (seconds)
+        // update rewind input to paused time (MM:SS)
         if (rewindInput) {
-            try { rewindInput.value = String(Math.floor(elapsed / 1000)); } catch (e) {}
+            try { rewindInput.value = formatClockSeconds(Math.floor(elapsed / 1000)); } catch (e) {}
         }
         logDebug('timer-stop received');
     }
@@ -219,8 +219,8 @@
         // ensure displays reset to zero
         if (elapsedEl) elapsedEl.textContent = '00:00.000';
         if (clockEl) clockEl.textContent = '00:00';
-        // reset the rewind input so subsequent Start uses 0
-        if (rewindInput) try { rewindInput.value = '0'; } catch (e) {}
+        // reset the rewind input so subsequent Start uses 0 (display as MM:SS)
+        if (rewindInput) try { rewindInput.value = '00:00'; } catch (e) {}
         // clear local cue states
         Object.keys(cueStates).forEach(k => delete cueStates[k]);
         // reset cue display
@@ -241,6 +241,16 @@
         });
         socket.on('disconnect', () => { setStatus('disconnected'); logDebug('socket disconnected'); });
         socket.on('sync-response', handleSyncResponse);
+        socket.on('cue-snapshot', (msg) => {
+            try {
+                if (!msg || !Array.isArray(msg.cues)) return;
+                localCues = msg.cues.map(c => ({ id: c.id, target: Number(c.target || 0), lead: (typeof c.lead === 'number') ? c.lead : FLASH_LEAD }));
+                // refresh UI based on snapshot elapsed if provided
+                const base = (msg && typeof msg.elapsed === 'number') ? Number(msg.elapsed) : 0;
+                try { refreshCueState(base); } catch (e) {}
+                logDebug('received cue-snapshot');
+            } catch (e) { logDebug('cue-snapshot handling error ' + (e && e.message)); }
+        });
         socket.on('timer-start', handleTimerStart);
         socket.on('timer-stop', handleTimerStop);
         socket.on('timer-reset', handleTimerReset);
@@ -327,7 +337,7 @@
             try {
                 const now = Date.now() + offset;
                 const elapsedMs = now - timerStart;
-                rewindInput.value = String(Math.floor(elapsedMs / 1000));
+                rewindInput.value = formatClockSeconds(Math.floor(elapsedMs / 1000));
             } catch (e) {}
         }
         // refresh cue UI to reflect paused/seeked time so future cues will retrigger
@@ -339,7 +349,7 @@
     });
     if (rewindBtn) rewindBtn.addEventListener('click', () => {
         // ensure the input is reset locally so Start will use 0
-        if (rewindInput) try { rewindInput.value = '0'; } catch (e) {}
+        if (rewindInput) try { rewindInput.value = '00:00'; } catch (e) {}
         if (socket && socket.connected) socket.emit('rewind'); else { handleTimerReset({}); }
     });
 

@@ -1,0 +1,5 @@
+[
+  { "id": "cue1", "target": 30, "lead": 4 },
+  { "id": "cue2", "target": 45, "lead": 4 },
+  { "id": "cue3", "target": 90, "lead": 4 }
+]
