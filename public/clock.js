@@ -419,6 +419,24 @@
             const secs = Number(v);
             if (!Number.isFinite(secs)) return;
             try { rewindInput.value = formatClockSeconds(Math.floor(secs)); } catch (e) {}
+            // Update displayed clock immediately for local UX.
+            try {
+                const ms = Math.floor(Number(secs) * 1000);
+                if (timerRunning) {
+                    // Adjust local timerStart so the running display shows the new time.
+                    try { timerStart = Date.now() + offset - ms; } catch (e) {}
+                    // Ensure the update loop is active to continue rendering.
+                    try { updateElapsedLoop(); } catch (e) {}
+                } else {
+                    if (elapsedEl) elapsedEl.textContent = formatElapsedMs(ms);
+                    if (clockEl) clockEl.textContent = formatClockSeconds(Math.floor(secs));
+                    try { refreshCueState(Number(secs)); } catch (e) {}
+                }
+                // Clear any transient pulse/overlay visuals so the snap looks clean.
+                if (cueDisplay) cueDisplay.classList.remove('pulse');
+                if (clockEl) clockEl.classList.remove('pulse');
+                const sf = document.getElementById('screenFlash'); if (sf) sf.classList.remove('on');
+            } catch (e) {}
         });
         // populate initial dropdown from any existing localCues
         try { populateCueSelect(); } catch (e) {}
