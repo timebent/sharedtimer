@@ -1,8 +1,9 @@
 # Shared Timer
 
-Prototype shared timer synced across devices using Socket.IO. Timer now counts up from 0:00 (elapsed time). Clients can start, pause, and rewind the timer (rewind subtracts seconds from elapsed time).
+Shared timer with Cues synced across devices using Socket.IO. 
+You can start, pause, and rewind the timer. Cues are triggered at specific elapsed times, and all connected clients will receive the cue information in real-time.
 
-Quick start (macOS / Linux):
+Quick start (macOS):
 
 1. Change to the project folder:
 
@@ -19,15 +20,16 @@ npm start
 
 3. On mobile devices on the same network, open:
 
-```
-http://<machine-ip>:3000
-```
-
 Get your IP on macOS (Wi‑Fi):
 
 ```bash
 ipconfig getifaddr en0
 ```
+
+```
+http://<machine-ip>:3000
+```
+
 
 Controls:
 - Start: start or resume the timer (you can provide seconds to start from a specific elapsed value)
