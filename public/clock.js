@@ -26,6 +26,7 @@
     const rewindInput = document.getElementById('rewindSeconds');
     const cuesContainer = document.querySelector('.cues');
     const cueDisplay = document.getElementById('cueDisplay');
+    const cueSelect = document.getElementById('cueSelect');
 
     let offset = 0; // server_time - local_time (ms)
     let bestSample = null;
@@ -140,10 +141,30 @@
             }
         });
         if (cueDisplay) {
-            cueDisplay.textContent = `Cues: ${cueCount}`;
+              cueDisplay.textContent = `Cue ${cueCount}`;
             cueDisplay.classList.toggle('flash', anyPre);
             cueDisplay.classList.remove('hit');
         }
+        // Update dropdown selection if present (do not change user selection)
+        if (cueSelect) {
+            // If the currently selected option matches a cue that is now hit, leave it; we only populate here.
+        }
+    }
+
+    function populateCueSelect() {
+        if (!cueSelect || !Array.isArray(localCues)) return;
+        // clear existing (keep first placeholder)
+        const placeholder = cueSelect.querySelector('option[value=""]') || null;
+        cueSelect.innerHTML = '';
+        if (placeholder) cueSelect.appendChild(placeholder);
+        // sort by target ascending
+        const sorted = localCues.slice().sort((a,b) => a.target - b.target);
+        sorted.forEach(cue => {
+            const opt = document.createElement('option');
+            opt.value = String(cue.target);
+            opt.textContent = `${cue.id} — ${formatClockSeconds(cue.target)}`;
+            cueSelect.appendChild(opt);
+        });
     }
 
     function updateElapsedLoop() {
@@ -164,7 +185,7 @@
                 cueStates[cue.id] = 'hit';
                 cueCount++;
                 if (cueDisplay) {
-                    cueDisplay.textContent = `Cues: ${cueCount}`;
+                    cueDisplay.textContent = `Cue ${cueCount}`;
                     cueDisplay.classList.add('hit');
                     // remove the hit visual after a short moment
                     setTimeout(() => { if (cueDisplay) cueDisplay.classList.remove('hit'); }, 800);
@@ -226,7 +247,7 @@
         // reset cue display
         if (cueDisplay) {
             cueDisplay.classList.remove('flash', 'hit');
-            cueDisplay.textContent = 'Cues: 0';
+                cueDisplay.textContent = 'Cue 0';
         }
         cueCount = 0; counted.clear();
         logDebug('timer-reset received');
@@ -248,6 +269,7 @@
                 // refresh UI based on snapshot elapsed if provided
                 const base = (msg && typeof msg.elapsed === 'number') ? Number(msg.elapsed) : 0;
                 try { refreshCueState(base); } catch (e) {}
+                try { populateCueSelect(); } catch (e) {}
                 logDebug('received cue-snapshot');
             } catch (e) { logDebug('cue-snapshot handling error ' + (e && e.message)); }
         });
@@ -352,6 +374,19 @@
         if (rewindInput) try { rewindInput.value = '00:00'; } catch (e) {}
         if (socket && socket.connected) socket.emit('rewind'); else { handleTimerReset({}); }
     });
+
+    // Hook up cue select change: set rewind input to selected cue's time
+    if (cueSelect && rewindInput) {
+        cueSelect.addEventListener('change', () => {
+            const v = cueSelect.value;
+            if (!v) return;
+            const secs = Number(v);
+            if (!Number.isFinite(secs)) return;
+            try { rewindInput.value = formatClockSeconds(Math.floor(secs)); } catch (e) {}
+        });
+        // populate initial dropdown from any existing localCues
+        try { populateCueSelect(); } catch (e) {}
+    }
 
 
     logDebug('client initialized');

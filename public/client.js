@@ -10,6 +10,7 @@
   const infoEl = document.getElementById('info');
   const cuesContainer = document.querySelector('.cues');
   const cueDisplay = document.getElementById('cueDisplay');
+  const cueSelect = document.getElementById('cueSelect');
   const logEl = document.getElementById('log');
 
   let serverElapsed = 0; // seconds
@@ -58,6 +59,27 @@
     render();
   });
 
+  socket.on('cue-snapshot', (msg) => {
+    try {
+      if (!msg || !Array.isArray(msg.cues)) return;
+      // populate localCues from snapshot
+      localCues.length = 0;
+      msg.cues.forEach(c => localCues.push({ id: c.id, target: Number(c.target || 0), lead: (typeof c.lead === 'number') ? c.lead : FLASH_LEAD }));
+      // populate select if present
+      if (cueSelect) {
+        // clear and add placeholder
+        cueSelect.innerHTML = '<option value="">Jump to cue…</option>';
+        const sorted = localCues.slice().sort((a,b)=>a.target-b.target);
+        sorted.forEach(cue => {
+          const opt = document.createElement('option');
+          opt.value = String(cue.target);
+          opt.textContent = `${cue.id} — ${fmtTime(cue.target)}`;
+          cueSelect.appendChild(opt);
+        });
+      }
+    } catch (e) { console.warn('cue-snapshot', e && e.message); }
+  });
+
   // Optional simple local cue: flash when reaching 45s
   function checkCues() {
     // update single display: flash when within FLASH_LEAD of any upcoming cue
@@ -70,7 +92,7 @@
       if (displayElapsed >= cue.target) {
         counted.add(cue.id);
         cueCount++;
-        if (cueDisplay) cueDisplay.textContent = `Cues: ${cueCount}`;
+          if (cueDisplay) cueDisplay.textContent = `Cue ${cueCount}`;
         log(`Cue ${cue.id} hit at ${fmtTime(displayElapsed)}`);
       }
     });
@@ -102,6 +124,16 @@
     socket.emit('pause');
   });
   rewindBtn.addEventListener('click', () => socket.emit('rewind'));
+
+  if (cueSelect && rewindInput) {
+    cueSelect.addEventListener('change', () => {
+      const v = cueSelect.value;
+      if (!v) return;
+      const secs = Number(v);
+      if (!Number.isFinite(secs)) return;
+      try { rewindInput.value = fmtTime(secs); } catch (e) {}
+    });
+  }
 
   // Smooth display loop
   setInterval(() => {
@@ -232,7 +264,7 @@ socket.on('cue', (c) => {
   if (c.phase === 'reset') {
     delete cueStates[c.id || 'cue1'];
     // reset single cue display
-    if (cueDisplay) { cueDisplay.classList.remove('flash','hit'); cueDisplay.textContent = 'Cues: 0'; }
+      if (cueDisplay) { cueDisplay.classList.remove('flash','hit'); cueDisplay.textContent = 'Cue 0'; }
     cueCount = 0; counted.clear();
     render();
     return;
@@ -252,7 +284,7 @@ socket.on('cue', (c) => {
     cueDisplay.classList.toggle('flash', st === 'pre');
     if (st === 'hit') {
       cueCount++;
-      cueDisplay.textContent = `Cues: ${cueCount}`;
+        cueDisplay.textContent = `Cue ${cueCount}`;
     }
   }
   render();
