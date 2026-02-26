@@ -1,0 +1,23 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Shared Timer Admin</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <main>
+    <h2>Cue Admin</h2>
+    <div id="status">Connecting...</div>
+    <table id="cueTable">
+      <thead><tr><th>ID</th><th>Target (MM:SS)</th><th>Lead (s)</th><th></th></tr></thead>
+      <tbody></tbody>
+    </table>
+    <button id="addCue">Add Cue</button>
+    <button id="save">Save Cues</button>
+    <pre id="adminLog"></pre>
+  </main>
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="/admin.js"></script>
+</body>
+</html>

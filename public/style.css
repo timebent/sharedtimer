@@ -24,6 +24,9 @@ button{padding:10px 14px;border-radius:8px;border:0;background:#2563eb;color:whi
 .cue-display.flash{animation:cue-flash 500ms ease-in-out infinite;background:#ef4444}
 .cue-display.hit{background:#dc2626;box-shadow:0 0 12px rgba(220,38,38,0.8)}
 
+/* make the main clock flash like the cue display */
+#clock.flash{animation:cue-flash 500ms ease-in-out infinite;background:#ef4444;color:#fff;box-shadow:0 0 18px rgba(239,68,68,0.9)}
+
 /* spacing for the cue dropdown to avoid cramped layout */
 .cue-select { margin-top: 18px; display: block; }
 
@@ -34,3 +37,12 @@ button{padding:10px 14px;border-radius:8px;border:0;background:#2563eb;color:whi
 }
 input[type=number]{padding:10px;border-radius:8px;border:0;width:80px}
 #info{margin-top:12px;color:#9fb0d9}
+
+/* smooth transitions for pulse effect */
+#clock.pulse { transform: scale(1.06); box-shadow: 0 0 28px rgba(239,68,68,0.95); }
+.cue-display.pulse { transform: scale(1.03); box-shadow: 0 0 20px rgba(239,68,68,0.7); }
+#clock, .cue-display { transition: transform 120ms ease, box-shadow 120ms ease; }
+
+/* full-screen white flash overlay for strong visual cue */
+.screen-flash { position: fixed; inset: 0; background: #fff; opacity: 0; pointer-events: none; transition: opacity 120ms ease; z-index: 9999; }
+.screen-flash.on { opacity: 0.9; }

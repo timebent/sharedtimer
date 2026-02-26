@@ -12,11 +12,13 @@
   const cueDisplay = document.getElementById('cueDisplay');
   const cueSelect = document.getElementById('cueSelect');
   const logEl = document.getElementById('log');
+  const screenFlashEl = document.getElementById('screenFlash');
 
   let serverElapsed = 0; // seconds
   let displayElapsed = 0; // seconds
   let running = false;
   let lastUpdate = Date.now();
+  let lastBeatLocal = null;
 
   function fmtTime(sec) {
     if (!Number.isFinite(sec)) sec = 0;
@@ -57,6 +59,13 @@
       if (!running) displayElapsed = serverElapsed;
     }
     render();
+    if (!running) {
+      // clear any visual flashes when paused
+      if (clockEl) clockEl.classList.remove('flash','pulse');
+      if (cueDisplay) cueDisplay.classList.remove('flash','pulse');
+      if (screenFlashEl) screenFlashEl.classList.remove('on');
+      lastBeatLocal = null;
+    }
   });
 
   socket.on('cue-snapshot', (msg) => {
@@ -97,7 +106,12 @@
       }
     });
     if (cueDisplay) {
-      cueDisplay.classList.toggle('flash', anyPre);
+      if (running) {
+        cueDisplay.classList.toggle('flash', anyPre);
+      } else {
+        // ensure flashing stops when paused
+        cueDisplay.classList.remove('flash', 'pulse');
+      }
     }
   }
 
@@ -147,6 +161,21 @@
     if (!Number.isFinite(displayElapsed) || displayElapsed < 0) displayElapsed = 0;
     render();
     checkCues();
+    // rhythmic pulse: detect if any cue is in pre state and pulse on integer seconds
+    const anyPre = localCues.some(c => cueStates[c.id] === 'pre');
+    if (anyPre && running) {
+      const currentBeat = Math.floor(displayElapsed || 0);
+      if (lastBeatLocal === null) lastBeatLocal = currentBeat;
+      if (currentBeat !== lastBeatLocal) {
+        if (clockEl) clockEl.classList.add('pulse');
+        if (cueDisplay) cueDisplay.classList.add('pulse');
+        if (screenFlashEl) screenFlashEl.classList.add('on');
+        setTimeout(() => { if (clockEl) clockEl.classList.remove('pulse'); if (cueDisplay) cueDisplay.classList.remove('pulse'); if (screenFlashEl) screenFlashEl.classList.remove('on'); }, 140);
+        lastBeatLocal = currentBeat;
+      }
+    } else {
+      lastBeatLocal = null;
+    }
   }, 100);
 
   log('client initialized');
@@ -281,7 +310,13 @@ socket.on('cue', (c) => {
   // reflect on single display
   if (cueDisplay) {
     const st = cueStates[c.id];
-    cueDisplay.classList.toggle('flash', st === 'pre');
+    if (state.running) {
+      cueDisplay.classList.toggle('flash', st === 'pre');
+      if (clockEl) clockEl.classList.toggle('flash', st === 'pre');
+    } else {
+      cueDisplay.classList.remove('flash', 'pulse');
+      if (clockEl) clockEl.classList.remove('flash', 'pulse');
+    }
     if (st === 'hit') {
       cueCount++;
         cueDisplay.textContent = `Cue ${cueCount}`;

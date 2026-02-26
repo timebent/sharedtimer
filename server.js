@@ -132,6 +132,31 @@ io.on('connection', (socket) => {
     }
   });
 
+  // Admin: accept a full cue list and persist it
+  socket.on('admin-set-cues', (payload) => {
+    try {
+      if (!payload || !Array.isArray(payload.cues)) return;
+      const provided = payload.cues;
+      // sanitize and set internal cues (reset emitted flags)
+      cues = provided.map(c => ({ id: String(c.id || Math.random()), target: Number(c.target || 0), lead: (typeof c.lead === 'number') ? Number(c.lead) : 4, preEmitted: false, hitEmitted: false }));
+      // persist to file (store only minimal fields)
+      try {
+        fs.writeFileSync(cuesPath, JSON.stringify(provided, null, 2));
+        socket.emit('admin-save-result', { ok: true });
+        console.log('admin updated cues, count=', cues.length);
+      } catch (e) {
+        console.error('failed to write cues.json', e && e.message);
+        socket.emit('admin-save-result', { ok: false, error: String(e && e.message) });
+      }
+      // broadcast updated snapshot
+      emitCueSnapshot();
+    } catch (e) {
+      // ignore
+    }
+  });
+
+  socket.on('request-cue-snapshot', () => { emitCueSnapshot(socket); });
+
   socket.on('disconnect', () => {
     // noop
   });

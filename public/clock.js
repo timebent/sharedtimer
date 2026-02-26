@@ -27,6 +27,7 @@
     const cuesContainer = document.querySelector('.cues');
     const cueDisplay = document.getElementById('cueDisplay');
     const cueSelect = document.getElementById('cueSelect');
+    const screenFlashEl = document.getElementById('screenFlash');
 
     let offset = 0; // server_time - local_time (ms)
     let bestSample = null;
@@ -46,6 +47,7 @@
     const FLASH_LEAD = 4; // seconds before cue to start flashing
     let cueCount = 0;
     const counted = new Set();
+    let lastBeat = null;
 
     // no per-cue buttons in this client; we use a single `cueDisplay`
 
@@ -144,6 +146,7 @@
               cueDisplay.textContent = `Cue ${cueCount}`;
             cueDisplay.classList.toggle('flash', anyPre);
             cueDisplay.classList.remove('hit');
+                        if (clockEl) clockEl.classList.toggle('flash', anyPre && timerRunning);
         }
         // Update dropdown selection if present (do not change user selection)
         if (cueSelect) {
@@ -201,6 +204,29 @@
         if (cueDisplay) {
             cueDisplay.classList.toggle('flash', anyPre);
         }
+
+        // also toggle clock flash (only when timer is running)
+        if (clockEl) clockEl.classList.toggle('flash', anyPre && timerRunning);
+
+        // rhythmic pulse synchronized to server time: pulse on integer-second boundaries
+        if (anyPre && timerStart) {
+            const now = Date.now() + offset;
+            const beat = Math.floor((now - timerStart) / 1000);
+            if (lastBeat === null) lastBeat = beat;
+            if (beat !== lastBeat) {
+                if (clockEl) clockEl.classList.add('pulse');
+                if (cueDisplay) cueDisplay.classList.add('pulse');
+                if (screenFlashEl) screenFlashEl.classList.add('on');
+                setTimeout(() => {
+                    if (clockEl) clockEl.classList.remove('pulse');
+                    if (cueDisplay) cueDisplay.classList.remove('pulse');
+                    if (screenFlashEl) screenFlashEl.classList.remove('on');
+                }, 140);
+                lastBeat = beat;
+            }
+        } else {
+            lastBeat = null;
+        }
         requestAnimationFrame(updateElapsedLoop);
     }
 
@@ -232,6 +258,10 @@
         if (rewindInput) {
             try { rewindInput.value = formatClockSeconds(Math.floor(elapsed / 1000)); } catch (e) {}
         }
+        // stop any flashing/pulsing when paused
+        if (cueDisplay) cueDisplay.classList.remove('flash', 'hit', 'pulse');
+        if (clockEl) clockEl.classList.remove('flash', 'pulse');
+        const sf = document.getElementById('screenFlash'); if (sf) sf.classList.remove('on');
         logDebug('timer-stop received');
     }
     function handleTimerReset(msg) {
@@ -248,6 +278,8 @@
         if (cueDisplay) {
             cueDisplay.classList.remove('flash', 'hit');
                 cueDisplay.textContent = 'Cue 0';
+                if (clockEl) clockEl.classList.remove('flash','pulse');
+                const sf = document.getElementById('screenFlash'); if (sf) sf.classList.remove('on');
         }
         cueCount = 0; counted.clear();
         logDebug('timer-reset received');
@@ -289,13 +321,17 @@
             if (!c.id) return;
             if (c.phase === 'pre') {
                 if (!cueStates[c.id]) cueStates[c.id] = 'pre';
-                if (cueDisplay) cueDisplay.classList.add('flash');
+                // only show flash if the timer is running locally
+                if (timerRunning && cueDisplay) {
+                    cueDisplay.classList.add('flash');
+                    if (clockEl) clockEl.classList.add('flash');
+                }
             } else if (c.phase === 'hit') {
                 cueStates[c.id] = 'hit';
                 if (!counted.has(c.id)) {
                     counted.add(c.id);
                     cueCount++;
-                    if (cueDisplay) cueDisplay.textContent = `Cues: ${cueCount}`;
+                    if (cueDisplay) cueDisplay.textContent = `Cue ${cueCount}`;
                 }
             }
         });
