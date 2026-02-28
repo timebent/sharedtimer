@@ -1,7 +1,8 @@
 body { font-family: system-ui, -apple-system, sans-serif; margin: 0; background: #0f172a; color: #e6eef8; }
 .container { max-width: 720px; margin: 20px auto; padding: 20px; }
 /* prominent clock */
-#clock { font-size: 9vmin; background: rgba(255,255,255,0.04); padding: 28px; border-radius: 14px; margin: 18px 0; display:flex;align-items:center;justify-content:center;text-align:center;font-weight:700 }
+.#clock { font-size: 10.5vmin; background: rgba(255,255,255,0.04); padding: 40px; min-height: 160px; border-radius: 14px; margin: 18px 0; display:flex;align-items:center;justify-content:center;text-align:center;font-weight:700 }
+#clock { font-size: 22vmin; background: rgba(255,255,255,0.04); padding: 56px; min-height: 220px; border-radius: 16px; margin: 18px 0; display:flex;align-items:center;justify-content:center;text-align:center;font-weight:800 }
 .controls { margin-top: 14px; display:flex; gap: 10px; justify-content:center; flex-wrap:wrap }
 .controls button { padding: 12px 18px; font-size: 1.05rem; }
 #rewindSeconds { width: 120px; margin-left: 8px; padding: 10px; font-size: 1rem; }
@@ -16,7 +17,7 @@ body { font-family: system-ui, -apple-system, sans-serif; margin: 0; background:
 .cue.hit{background:#dc2626;box-shadow:0 0 12px rgba(220,38,38,0.8)}
 
 /* single cue display */
-.cue-display{background:#334155;color:#fff;padding:14px 18px;border-radius:10px;font-weight:900;font-size:1.25rem}
+.cue-display{background:#334155;color:#fff;padding:36px 28px;border-radius:16px;font-weight:900;font-size:3.2rem; min-height:160px; display:flex; align-items:center; justify-content:center}
 .cue-display.flash{animation:cue-flash 500ms ease-in-out infinite;background:#ef4444}
 .cue-display.hit{background:#dc2626;box-shadow:0 0 12px rgba(220,38,38,0.8)}
 
@@ -30,6 +31,16 @@ body { font-family: system-ui, -apple-system, sans-serif; margin: 0; background:
 	0%{transform:scale(1);opacity:1}
 	50%{transform:scale(1.06);opacity:0.6}
 	100%{transform:scale(1);opacity:1}
+}
+
+/* Extra emphasis when device is in portrait orientation on small screens */
+@media (max-width: 520px) and (orientation: portrait) {
+	.cues { order: -1; margin-bottom: 14px; }
+	.cue-display { font-size: 4.8rem; padding: 40px 20px; min-height: 200px; border-radius: 18px; box-shadow: 0 16px 36px rgba(0,0,0,0.45); }
+	/* slightly reduce clock digits in portrait so cue display dominates */
+	#clock { font-size: 14vmin; padding: 20px; min-height: 120px }
+	/* increase spacing around controls for touch */
+	.controls { gap: 14px }
 }
 input[type=number]{padding:10px;border-radius:8px;border:0;width:80px}
 #info{margin-top:12px;color:#9fb0d9}
@@ -51,10 +62,14 @@ input[type=number]{padding:10px;border-radius:8px;border:0;width:80px}
 
 /* responsive: stack cues on small screens */
 @media (max-width: 520px) {
-	.cues { flex-direction: column; align-items: stretch; }
-	.cue-display { text-align: left; }
+	/* Mobile: make cue display more prominent and appear above the clock */
+	.container { display: flex; flex-direction: column; align-items: stretch; }
+	.cues { order: -1; flex-direction: column; align-items: stretch; margin-bottom: 12px; }
+	.cue-display { text-align: center; }
 	.cue-select { margin-top: 10px; }
-	#clock { font-size: 12vmin; padding: 26px }
+	#clock { font-size: 20vmin; padding: 34px; min-height: 160px; }
+	/* Emphasize cue display on mobile */
+	.cue-display { font-size: 3.4rem; padding: 30px 18px; min-height: 140px; border-radius: 16px; box-shadow: 0 10px 30px rgba(0,0,0,0.35); }
 }
 
 /* make the cue select element fill the same width as the clock */

@@ -486,5 +486,43 @@
 
 
     logDebug('client initialized');
+
+    // --- Web MIDI: trigger Start on MIDI Note On ---
+    function onMIDIMessage(e) {
+        try {
+            const [status, note, velocity] = e.data;
+            const cmd = status & 0xf0;
+            // 0x90 = Note On, treat velocity>0 as note-on
+            if (cmd === 0x90 && velocity > 0) {
+                logDebug('midi noteOn ' + note + ' vel=' + velocity);
+                if (startBtn) {
+                    // trigger the same action as pressing Start
+                    startBtn.click();
+                }
+            }
+        } catch (err) { logDebug('midi msg error ' + (err && err.message)); }
+    }
+
+    async function initMIDI() {
+        if (!('requestMIDIAccess' in navigator)) {
+            logDebug('Web MIDI API not supported in this browser');
+            return;
+        }
+        try {
+            const midi = await navigator.requestMIDIAccess();
+            // attach listeners to existing inputs
+            for (const input of midi.inputs.values()) input.onmidimessage = onMIDIMessage;
+            // attach for hot-plugged devices
+            midi.onstatechange = (ev) => {
+                if (ev.port && ev.port.type === 'input' && ev.port.state === 'connected') ev.port.onmidimessage = onMIDIMessage;
+            };
+            logDebug('MIDI initialized');
+        } catch (e) {
+            logDebug('MIDI init failed: ' + (e && e.message));
+        }
+    }
+
+    // attempt to initialize MIDI (will prompt for permission in supporting browsers)
+    try { initMIDI(); } catch (e) {}
 })();
     
